@@ -20,10 +20,14 @@
             border-bottom: 2px solid #333;
             padding-bottom: 10px;
             margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        .stop-id {
-            float: right;
+        .live-clock {
             color: #ff9900;
+            font-weight: bold;
+            font-size: 3.5vw;
         }
         .timetable {
             width: 100%;
@@ -61,7 +65,8 @@
 <body>
 
     <div class="header">
-        Live Departures <span class="stop-id">Stop: 6200246210</span>
+        <div>Live Departures <span style="font-size: 1.5vw; color: #666; margin-left: 10px;">Stop: 6200246210</span></div>
+        <div id="clock" class="live-clock">00:00:00</div>
     </div>
 
     <div id="display-area">
@@ -70,9 +75,24 @@
 
     <script>
         const stopId = "6200246210";
-        // Using an open CORS proxy to safely pass the restricted data feed directly into GitHub Pages
+        // Using corsproxy.io to safely bridge the data over to GitHub Pages
         const apiEndpoint = `https://corsproxy.io{stopId}`;
 
+        // 1. Digital Clock Function
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-GB', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+            });
+            document.getElementById('clock').textContent = timeString;
+        }
+        // Update the clock every single second
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // 2. Bus Timetable Data Functions
         async function updateTimetable() {
             try {
                 const response = await fetch(apiEndpoint);
@@ -112,7 +132,7 @@
         }
 
         updateTimetable();
-        // Keep data automatically fresh on your monitor 
+        // Refresh transit data layout every 30 seconds
         setInterval(updateTimetable, 30000);
     </script>
 </body>
