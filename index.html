@@ -70,7 +70,7 @@
     </div>
 
     <div id="display-area">
-        <div class="loading">Loading departures...</div>
+        <div class="loading">Connecting to live timetable...</div>
     </div>
 
     <script>
@@ -84,46 +84,84 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        // 2. Fetch Live Times via Public Open Data API Proxy
+        // 2. Fetch Live Times via Direct Scraper Proxy
         async function fetchBusTimes() {
-            const stopId = "6200246210";
-            // Using a reliable open API proxy to request Edinburgh open data directly without getting blocked
-            const url = `https://allorigins.win{encodeURIComponent('https://tfe-opendata.com' + stopId)}`;
+            const targetStopUrl = 'https://lthn.co';
+            // Utilizing a clean proxy to fetch the raw webpage contents directly
+            const proxyUrl = `https://corsproxy.io{encodeURIComponent(targetStopUrl)}`;
 
             try {
-                const response = await fetch(url);
+                const response = await fetch(proxyUrl);
                 if (!response.ok) throw new Error();
-                const json = await response.json();
+                const htmlText = await response.text();
                 
-                // Parse out the JSON payload hidden within the allorigins proxy wrapper
-                const data = JSON.parse(json.contents);
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlText, 'text/html');
                 
-                if (!data.departures || data.departures.length === 0) {
-                    document.getElementById('display-area').innerHTML = `<div class="loading">No upcoming buses scheduled.</div>`;
-                    return;
+                // Find all data table rows or list items inside Lothian's template
+                const rows = doc.querySelectorAll('.stop-timetable tr, .timetable tr, tr');
+                let html = '<table class="timetable">';
+                let itemsFound = 0;
+
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length >= 2) {
+                        const route = cells[0].textContent.trim();
+                        const dest = cells[1].textContent.trim();
+                        const time = cells[2] ? cells[2].textContent.trim() : 'DUE';
+                        
+                        // Verify we are capturing real bus lines (e.g. alphanumeric strings)
+                        if (route.length > 0 && route.length < 5) {
+                            html += `<tr><td class="route">${route}</td><td class="destination">${dest}</td><td class="countdown">${time}</td></tr>`;
+                            itemsFound++;
+                        }
+                    }
+                });
+
+                html += '</table>';
+
+                if (itemsFound > 0) {
+                    document.getElementById('display-area').innerHTML = html;
+                } else {
+                    // Fallback to searching text lists if they aren't using tables on this specific path
+                    parseFallbackList(doc);
                 }
 
-                let html = '<table class="timetable">';
-                data.departures.forEach(bus => {
-                    let dueTime = bus.minutes_due === 0 ? "DUE" : `${bus.minutes_due} mins`;
-                    html += `
-                        <tr>
-                            <td class="route">${bus.line_name}</td>
-                            <td class="destination">${bus.destination}</td>
-                            <td class="countdown">${dueTime}</td>
-                        </tr>
-                    `;
-                });
-                html += '</table>';
-                document.getElementById('display-area').innerHTML = html;
-
             } catch (e) {
-                document.getElementById('display-area').innerHTML = `<div class="loading" style="color: #ff3333;">Data offline. Retrying...</div>`;
+                document.getElementById('display-area').innerHTML = `<div class="loading" style="color: #ff3333;">Offline. Reconnecting...</div>`;
+            }
+        }
+
+        function parseFallbackList(doc) {
+            const items = doc.querySelectorAll('li, div[class*="row"], [class*="service"]');
+            let html = '<table class="timetable">';
+            let itemsFound = 0;
+
+            items.forEach(item => {
+                const text = item.textContent.replace(/\s+/g, ' ').trim();
+                // Extract items that resemble: "22 Gyle Centre DUE" or "30 Clovenstone 5 mins"
+                if (text.match(/^\w?\d+\s+.*\s+(\d+|DUE)/i)) {
+                    const parts = text.split(' ');
+                    const route = parts[0];
+                    const time = parts[parts.length - 1];
+                    const dest = parts.slice(1, parts.length - 1).join(' ').replace(/mins?/i, '').trim();
+
+                    html += `<tr><td class="route">${route}</td><td class="destination">${dest}</td><td class="countdown">${time.toLowerCase() === 'due' ? 'DUE' : time + ' mins'}</td></tr>`;
+                    itemsFound++;
+                }
+            });
+
+            html += '</table>';
+
+            if (itemsFound > 0) {
+                document.getElementById('display-area').innerHTML = html;
+            } else {
+                document.getElementById('display-area').innerHTML = `<div class="loading">No upcoming departures listed.</div>`;
             }
         }
 
         fetchBusTimes();
-        setInterval(fetchBusTimes, 30000); // Automatically updates every 30 seconds
+        setInterval(fetchBusTimes, 30000); // Check for real-time timetable adjustments every 30 seconds
     </script>
 </body>
 </html>
