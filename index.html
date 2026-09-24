@@ -84,84 +84,46 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        // 2. Fetch Live Times via Scraper Proxy
+        // 2. Fetch Live Times via Public Open Data API Proxy
         async function fetchBusTimes() {
-            const targetUrl = 'https://lthn.co';
-            // Using an allorigins proxy to read the raw HTML content of the direct stop page safely
-            const proxyUrl = `https://allorigins.win{encodeURIComponent(targetUrl)}&_=` + new Date().getTime();
+            const stopId = "6200246210";
+            // Using a reliable open API proxy to request Edinburgh open data directly without getting blocked
+            const url = `https://allorigins.win{encodeURIComponent('https://tfe-opendata.com' + stopId)}`;
 
             try {
-                const response = await fetch(proxyUrl);
+                const response = await fetch(url);
                 if (!response.ok) throw new Error();
                 const json = await response.json();
                 
-                // Parse the text content looking for transit table pieces
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(json.contents, 'text/html');
+                // Parse out the JSON payload hidden within the allorigins proxy wrapper
+                const data = JSON.parse(json.contents);
                 
-                // Locate the timetable elements inside Lothian's live structure
-                const rows = doc.querySelectorAll('.stop-timetable tr, .timetable tr, [class*="stop"] tr');
-                
-                if (rows.length === 0) {
-                    // Alternative fallback: check for list items if rows aren't standard tables
-                    parseListItems(doc);
+                if (!data.departures || data.departures.length === 0) {
+                    document.getElementById('display-area').innerHTML = `<div class="loading">No upcoming buses scheduled.</div>`;
                     return;
                 }
 
                 let html = '<table class="timetable">';
-                rows.forEach(row => {
-                    const cells = row.querySelectorAll('td');
-                    if (cells.length >= 2) {
-                        const route = cells[0].innerText.trim();
-                        const dest = cells[1].innerText.trim();
-                        const time = cells[2] ? cells[2].innerText.trim() : 'DUE';
-                        html += `<tr><td class="route">${route}</td><td class="destination">${dest}</td><td class="countdown">${time}</td></tr>`;
-                    }
+                data.departures.forEach(bus => {
+                    let dueTime = bus.minutes_due === 0 ? "DUE" : `${bus.minutes_due} mins`;
+                    html += `
+                        <tr>
+                            <td class="route">${bus.line_name}</td>
+                            <td class="destination">${bus.destination}</td>
+                            <td class="countdown">${dueTime}</td>
+                        </tr>
+                    `;
                 });
                 html += '</table>';
                 document.getElementById('display-area').innerHTML = html;
 
             } catch (e) {
-                // If scraping fails temporarily, fallback cleanly to an organized structure mock
-                renderMockFallback();
+                document.getElementById('display-area').innerHTML = `<div class="loading" style="color: #ff3333;">Data offline. Retrying...</div>`;
             }
-        }
-
-        function parseListItems(doc) {
-            // Backup parsing in case Lothian utilizes a div/list layout for shortlinks
-            const items = doc.querySelectorAll('[class*="service"], [class*="bus"], li');
-            if (items.length < 3) {
-                renderMockFallback();
-                return;
-            }
-            
-            let html = '<table class="timetable">';
-            items.forEach(item => {
-                if(item.innerText && item.innerText.match(/\d+/)) {
-                    const text = item.innerText.replace(/\s+/g, ' ').trim();
-                    const parts = text.split(' ');
-                    if(parts.length >= 2) {
-                        html += `<tr><td class="route">${parts[0]}</td><td class="destination">${parts.slice(1, parts.length-1).join(' ')}</td><td class="countdown">${parts[parts.length-1]}</td></tr>`;
-                    }
-                }
-            });
-            html += '</table>';
-            document.getElementById('display-area').innerHTML = html;
-        }
-
-        function renderMockFallback() {
-            // If the proxy times out, display active structural layout so info-beamer layout doesn't break blank
-            document.getElementById('display-area').innerHTML = `
-                <table class="timetable">
-                    <tr><td class="route">22</td><td class="destination">Gyle Centre</td><td class="countdown">DUE</td></tr>
-                    <tr><td class="route">30</td><td class="destination">Clovenstone</td><td class="countdown">4 mins</td></tr>
-                    <tr><td class="route">X27</td><td class="destination">Bathgate</td><td class="countdown">11 mins</td></tr>
-                    <tr><td class="route">22</td><td class="destination">Gyle Centre</td><td class="countdown">14 mins</td></tr>
-                </table>`;
         }
 
         fetchBusTimes();
-        setInterval(fetchBusTimes, 45000); // Check for timetable changes safely every 45s
+        setInterval(fetchBusTimes, 30000); // Automatically updates every 30 seconds
     </script>
 </body>
 </html>
