@@ -37,20 +37,17 @@
             border-bottom: 1px solid #222;
         }
         .timetable td {
-            padding: 20px 0;
+            padding: 15px 0;
             font-size: 5.5vw;
             font-weight: bold;
         }
         .route {
             color: #ff9900;
-            width: 18%;
+            width: 20%;
         }
         .destination {
             color: #ffffff;
-            width: 57%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            width: 55%;
         }
         .countdown {
             color: #00ff00;
@@ -73,7 +70,7 @@
     </div>
 
     <div id="display-area">
-        <div class="loading">Connecting to live timetable...</div>
+        <div class="loading">Connecting to transit stream...</div>
     </div>
 
     <script>
@@ -87,76 +84,55 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        // 2. Fetch Live Times via Public Regional Transit Tracker Engine
+        // 2. Fetch Live Times via Open Mobile Endpoint
         async function fetchBusTimes() {
-            // SMS Stop Code 6200246210 matches the NaPTAN platform code for the Lothian region
-            const smsCode = "6200246210";
-            const apiEndpoint = `https://transportapi.com{smsCode}/live.json?app_id=0358a9e0&app_key=72e7da20c1da0392cbb4de27d0921dfd&group=no&nextbuses=no`;
+            // Using the open-access JSON payload route natively served by the transit system
+            const apiEndpoint = 'https://buses.co.uk';
 
             try {
                 const response = await fetch(apiEndpoint);
                 if (!response.ok) throw new Error();
                 const data = await response.json();
                 
-                // Extract departures from the standardized UK bus data array
-                const departures = data.departures ? Object.values(data.departures).flat() : [];
-                
-                if (departures.length === 0) {
-                    document.getElementById('display-area').innerHTML = `<div class="loading">No upcoming departures listed.</div>`;
+                if (!data || !data.services || data.services.length === 0) {
+                    document.getElementById('display-area').innerHTML = `<div class="loading">No upcoming buses scheduled.</div>`;
                     return;
                 }
 
-                // Sort upcoming buses by their chronological departure sequence
-                departures.sort((a, b) => {
-                    const timeA = a.best_departure_estimate || a.aimed_departure_time;
-                    const timeB = b.best_departure_estimate || b.aimed_departure_time;
-                    return timeA.localeCompare(timeB);
+                let html = '<table class="timetable">';
+                let busCount = 0;
+
+                // Loop through the data to structure the timetable rows
+                data.services.forEach(service => {
+                    service.departures.forEach(bus => {
+                        busCount++;
+                        let dueTime = bus.minutes === 0 ? "DUE" : `${bus.minutes} mins`;
+                        html += `
+                            <tr>
+                                <td class="route">${service.service_number}</td>
+                                <td class="destination">${bus.destination}</td>
+                                <td class="countdown">${dueTime}</td>
+                            </tr>
+                        `;
+                    });
                 });
 
-                let html = '<table class="timetable">';
-                
-                // Display the top 5 closest departures to prevent screen crowding on your display layout
-                departures.slice(0, 5).forEach(bus => {
-                    let dueText = "";
-                    
-                    if (bus.best_departure_estimate) {
-                        const [hours, minutes] = bus.best_departure_estimate.split(':');
-                        const now = new Date();
-                        const busTime = new Date();
-                        busTime.setHours(parseInt(hours), parseInt(minutes), 0);
-                        
-                        const diffMins = Math.round((busTime - now) / 60000);
-                        dueText = diffMins <= 1 ? "DUE" : `${diffMins} mins`;
-                    } else {
-                        dueText = bus.aimed_departure_time || "Sched";
-                    }
-                    
-                    html += `
-                        <tr>
-                            <td class="route">${bus.line_name || bus.line}</td>
-                            <td class="destination">${bus.direction || 'City Centre'}</td>
-                            <td class="countdown">${dueText}</td>
-                        </tr>
-                    `;
-                });
-                
                 html += '</table>';
-                document.getElementById('display-area').innerHTML = html;
+
+                if (busCount > 0) {
+                    document.getElementById('display-area').innerHTML = html;
+                } else {
+                    document.getElementById('display-area').innerHTML = `<div class="loading">No services scheduled right now.</div>`;
+                }
 
             } catch (e) {
-                // Keep the layout intact with dummy entries if connection drops so your display never glitches blank
-                document.getElementById('display-area').innerHTML = `
-                    <table class="timetable">
-                        <tr><td class="route">22</td><td class="destination">Gyle Centre</td><td class="countdown">DUE</td></tr>
-                        <tr><td class="route">30</td><td class="destination">Clovenstone</td><td class="countdown">4 mins</td></tr>
-                        <tr><td class="route">X27</td><td class="destination">Bathgate</td><td class="countdown">11 mins</td></tr>
-                        <tr><td class="route">22</td><td class="destination">Gyle Centre</td><td class="countdown">14 mins</td></tr>
-                    </table>`;
+                // Connection failed layout block to protect the visual output from crashing
+                document.getElementById('display-area').innerHTML = `<div class="loading" style="color: #ff3333;">Data stream error. Retrying...</div>`;
             }
         }
 
         fetchBusTimes();
-        setInterval(fetchBusTimes, 30000); // Pull fresh arrivals every 30 seconds
+        setInterval(fetchBusTimes, 30000); // Check for arrival changes every 30 seconds
     </script>
 </body>
 </html>
