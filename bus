@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Stop 6200246210 Live Departures</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            overflow: hidden;
+        }
+        .header {
+            font-size: 2vw;
+            color: #aaaaaa;
+            text-transform: uppercase;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .stop-id {
+            float: right;
+            color: #ff9900;
+        }
+        .timetable {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .timetable tr {
+            border-bottom: 1px solid #222;
+        }
+        .timetable td {
+            padding: 15px 0;
+            font-size: 5vw;
+            font-weight: bold;
+        }
+        .route {
+            color: #ff9900;
+            width: 20%;
+        }
+        .destination {
+            color: #ffffff;
+            width: 55%;
+        }
+        .countdown {
+            color: #00ff00;
+            text-align: right;
+            width: 25%;
+        }
+        .loading {
+            font-size: 3vw;
+            color: #888;
+            text-align: center;
+            margin-top: 20%;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        Live Departures <span class="stop-id">Stop: 6200246210</span>
+    </div>
+
+    <div id="display-area">
+        <div class="loading">Fetching live times...</div>
+    </div>
+
+    <script>
+        const stopId = "6200246210";
+        // Public API endpoint for Transport for Edinburgh open data
+        const apiEndpoint = `https://tfe-opendata.com{stopId}`;
+
+        async function updateTimetable() {
+            try {
+                const response = await fetch(apiEndpoint);
+                if (!response.ok) throw new Error('Network error');
+                
+                const data = await response.json();
+                renderData(data);
+            } catch (error) {
+                document.getElementById('display-area').innerHTML = 
+                    `<div class="loading" style="color: #ff3333;">Error loading live data. Retrying...</div>`;
+            }
+        }
+
+        function renderData(data) {
+            // Check if departures exist in the API payload
+            if (!data.departures || data.departures.length === 0) {
+                document.getElementById('display-area').innerHTML = 
+                    `<div class="loading">No upcoming buses scheduled.</div>`;
+                return;
+            }
+
+            let html = '<table class="timetable">';
+            
+            // Loop through the upcoming buses and extract the clean text
+            data.departures.forEach(bus => {
+                let dueTime = bus.minutes_due === 0 ? "DUE" : `${bus.minutes_due} mins`;
+                
+                html += `
+                    <tr>
+                        <td class="route">${bus.line_name}</td>
+                        <td class="destination">${bus.destination}</td>
+                        <td class="countdown">${dueTime}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</table>';
+            document.getElementById('display-area').innerHTML = html;
+        }
+
+        // Run the script immediately on load
+        updateTimetable();
+        
+        // Refresh every 30 seconds to keep live countdown accurate on your screen
+        setInterval(updateTimetable, 30000);
+    </script>
+</body>
+</html>
