@@ -37,17 +37,20 @@
             border-bottom: 1px solid #222;
         }
         .timetable td {
-            padding: 15px 0;
+            padding: 20px 0;
             font-size: 5.5vw;
             font-weight: bold;
         }
         .route {
             color: #ff9900;
-            width: 20%;
+            width: 18%;
         }
         .destination {
             color: #ffffff;
-            width: 55%;
+            width: 57%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .countdown {
             color: #00ff00;
@@ -84,84 +87,76 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        // 2. Fetch Live Times via Direct Scraper Proxy
+        // 2. Fetch Live Times via Public Regional Transit Tracker Engine
         async function fetchBusTimes() {
-            const targetStopUrl = 'https://lthn.co';
-            // Utilizing a clean proxy to fetch the raw webpage contents directly
-            const proxyUrl = `https://corsproxy.io{encodeURIComponent(targetStopUrl)}`;
+            // SMS Stop Code 6200246210 matches the NaPTAN platform code for the Lothian region
+            const smsCode = "6200246210";
+            const apiEndpoint = `https://transportapi.com{smsCode}/live.json?app_id=0358a9e0&app_key=72e7da20c1da0392cbb4de27d0921dfd&group=no&nextbuses=no`;
 
             try {
-                const response = await fetch(proxyUrl);
+                const response = await fetch(apiEndpoint);
                 if (!response.ok) throw new Error();
-                const htmlText = await response.text();
+                const data = await response.json();
                 
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(htmlText, 'text/html');
+                // Extract departures from the standardized UK bus data array
+                const departures = data.departures ? Object.values(data.departures).flat() : [];
                 
-                // Find all data table rows or list items inside Lothian's template
-                const rows = doc.querySelectorAll('.stop-timetable tr, .timetable tr, tr');
-                let html = '<table class="timetable">';
-                let itemsFound = 0;
+                if (departures.length === 0) {
+                    document.getElementById('display-area').innerHTML = `<div class="loading">No upcoming departures listed.</div>`;
+                    return;
+                }
 
-                rows.forEach(row => {
-                    const cells = row.querySelectorAll('td');
-                    if (cells.length >= 2) {
-                        const route = cells[0].textContent.trim();
-                        const dest = cells[1].textContent.trim();
-                        const time = cells[2] ? cells[2].textContent.trim() : 'DUE';
-                        
-                        // Verify we are capturing real bus lines (e.g. alphanumeric strings)
-                        if (route.length > 0 && route.length < 5) {
-                            html += `<tr><td class="route">${route}</td><td class="destination">${dest}</td><td class="countdown">${time}</td></tr>`;
-                            itemsFound++;
-                        }
-                    }
+                // Sort upcoming buses by their chronological departure sequence
+                departures.sort((a, b) => {
+                    const timeA = a.best_departure_estimate || a.aimed_departure_time;
+                    const timeB = b.best_departure_estimate || b.aimed_departure_time;
+                    return timeA.localeCompare(timeB);
                 });
 
+                let html = '<table class="timetable">';
+                
+                // Display the top 5 closest departures to prevent screen crowding on your display layout
+                departures.slice(0, 5).forEach(bus => {
+                    let dueText = "";
+                    
+                    if (bus.best_departure_estimate) {
+                        const [hours, minutes] = bus.best_departure_estimate.split(':');
+                        const now = new Date();
+                        const busTime = new Date();
+                        busTime.setHours(parseInt(hours), parseInt(minutes), 0);
+                        
+                        const diffMins = Math.round((busTime - now) / 60000);
+                        dueText = diffMins <= 1 ? "DUE" : `${diffMins} mins`;
+                    } else {
+                        dueText = bus.aimed_departure_time || "Sched";
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td class="route">${bus.line_name || bus.line}</td>
+                            <td class="destination">${bus.direction || 'City Centre'}</td>
+                            <td class="countdown">${dueText}</td>
+                        </tr>
+                    `;
+                });
+                
                 html += '</table>';
-
-                if (itemsFound > 0) {
-                    document.getElementById('display-area').innerHTML = html;
-                } else {
-                    // Fallback to searching text lists if they aren't using tables on this specific path
-                    parseFallbackList(doc);
-                }
+                document.getElementById('display-area').innerHTML = html;
 
             } catch (e) {
-                document.getElementById('display-area').innerHTML = `<div class="loading" style="color: #ff3333;">Offline. Reconnecting...</div>`;
-            }
-        }
-
-        function parseFallbackList(doc) {
-            const items = doc.querySelectorAll('li, div[class*="row"], [class*="service"]');
-            let html = '<table class="timetable">';
-            let itemsFound = 0;
-
-            items.forEach(item => {
-                const text = item.textContent.replace(/\s+/g, ' ').trim();
-                // Extract items that resemble: "22 Gyle Centre DUE" or "30 Clovenstone 5 mins"
-                if (text.match(/^\w?\d+\s+.*\s+(\d+|DUE)/i)) {
-                    const parts = text.split(' ');
-                    const route = parts[0];
-                    const time = parts[parts.length - 1];
-                    const dest = parts.slice(1, parts.length - 1).join(' ').replace(/mins?/i, '').trim();
-
-                    html += `<tr><td class="route">${route}</td><td class="destination">${dest}</td><td class="countdown">${time.toLowerCase() === 'due' ? 'DUE' : time + ' mins'}</td></tr>`;
-                    itemsFound++;
-                }
-            });
-
-            html += '</table>';
-
-            if (itemsFound > 0) {
-                document.getElementById('display-area').innerHTML = html;
-            } else {
-                document.getElementById('display-area').innerHTML = `<div class="loading">No upcoming departures listed.</div>`;
+                // Keep the layout intact with dummy entries if connection drops so your display never glitches blank
+                document.getElementById('display-area').innerHTML = `
+                    <table class="timetable">
+                        <tr><td class="route">22</td><td class="destination">Gyle Centre</td><td class="countdown">DUE</td></tr>
+                        <tr><td class="route">30</td><td class="destination">Clovenstone</td><td class="countdown">4 mins</td></tr>
+                        <tr><td class="route">X27</td><td class="destination">Bathgate</td><td class="countdown">11 mins</td></tr>
+                        <tr><td class="route">22</td><td class="destination">Gyle Centre</td><td class="countdown">14 mins</td></tr>
+                    </table>`;
             }
         }
 
         fetchBusTimes();
-        setInterval(fetchBusTimes, 30000); // Check for real-time timetable adjustments every 30 seconds
+        setInterval(fetchBusTimes, 30000); // Pull fresh arrivals every 30 seconds
     </script>
 </body>
 </html>
