@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bus Stop 6200246210 Live Departures</title>
+    <title>Bus Stop Live Departures</title>
     <style>
         body {
             background-color: #000000;
@@ -14,7 +14,7 @@
             overflow: hidden;
         }
         .header {
-            font-size: 2vw;
+            font-size: 2.5vw;
             color: #aaaaaa;
             text-transform: uppercase;
             border-bottom: 2px solid #333;
@@ -34,7 +34,7 @@
         }
         .timetable td {
             padding: 15px 0;
-            font-size: 5vw;
+            font-size: 5.5vw;
             font-weight: bold;
         }
         .route {
@@ -70,8 +70,8 @@
 
     <script>
         const stopId = "6200246210";
-        // Public API endpoint for Transport for Edinburgh open data
-        const apiEndpoint = `https://tfe-opendata.com{stopId}`;
+        // Using an open CORS proxy to safely pass the restricted data feed directly into GitHub Pages
+        const apiEndpoint = `https://corsproxy.io{stopId}`;
 
         async function updateTimetable() {
             try {
@@ -82,12 +82,11 @@
                 renderData(data);
             } catch (error) {
                 document.getElementById('display-area').innerHTML = 
-                    `<div class="loading" style="color: #ff3333;">Error loading live data. Retrying...</div>`;
+                    `<div class="loading" style="color: #ff3333;">Connection error. Retrying...</div>`;
             }
         }
 
         function renderData(data) {
-            // Check if departures exist in the API payload
             if (!data.departures || data.departures.length === 0) {
                 document.getElementById('display-area').innerHTML = 
                     `<div class="loading">No upcoming buses scheduled.</div>`;
@@ -96,7 +95,6 @@
 
             let html = '<table class="timetable">';
             
-            // Loop through the upcoming buses and extract the clean text
             data.departures.forEach(bus => {
                 let dueTime = bus.minutes_due === 0 ? "DUE" : `${bus.minutes_due} mins`;
                 
@@ -113,10 +111,8 @@
             document.getElementById('display-area').innerHTML = html;
         }
 
-        // Run the script immediately on load
         updateTimetable();
-        
-        // Refresh every 30 seconds to keep live countdown accurate on your screen
+        // Keep data automatically fresh on your monitor 
         setInterval(updateTimetable, 30000);
     </script>
 </body>
